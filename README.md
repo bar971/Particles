@@ -25,6 +25,10 @@ Progetto **vanilla JS (ES5), zero dipendenze**: basta un doppio clic su `index.h
 
 Per i dettagli architetturali e le decisioni di design, vedi [`HANDOFF.md`](./HANDOFF.md).
 
+## Deploy
+
+Pubblicato su Cloudflare Workers (static assets) all'indirizzo https://particles.bar971.workers.dev. Ogni push su `main` avvia automaticamente build e pubblicazione tramite Cloudflare Workers Builds (integrazione Git).
+
 ## Licenza
 
 Rilasciato in pubblico dominio con [The Unlicense](./LICENSE).
