@@ -1,0 +1,10 @@
+{
+  "name": "particles",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.122.0"
+  }
+}
