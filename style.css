@@ -1,0 +1,101 @@
+canvas {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #00000033;
+}
+
+/* Menu flottante a sinistra, centrato verticalmente: pannello scuro semitrasparente
+   arrotondato, coerente con lo stile pill già usato nel progetto. */
+#shapeMenu {
+    position: fixed;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 80vh;
+    padding: 10px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, .25);
+    background-color: rgba(0, 0, 0, .55);
+    color: #fff;
+    font-family: inherit;
+    font-size: 14px;
+}
+
+#shapeMenuList {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-y: auto;
+    max-height: 60vh;
+}
+
+#shapeMenuList li {
+    padding: 6px 14px;
+    border-radius: 999px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color .2s ease;
+}
+
+#shapeMenuList li:hover {
+    background-color: rgba(255, 255, 255, .15);
+}
+
+#shapeMenuList li.active {
+    background-color: rgba(255, 255, 255, .3);
+    font-weight: bold;
+}
+
+#shapeMenuText {
+    display: flex;
+    gap: 6px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, .2);
+    border-radius: 12px;
+}
+
+#shapeMenuText.active {
+    background-color: rgba(255, 255, 255, .1);
+}
+
+#shapeTextInput {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, .25);
+    background-color: rgba(255, 255, 255, .1);
+    color: #fff;
+    font-family: inherit;
+    font-size: 13px;
+}
+
+#shapeTextInput::placeholder {
+    color: rgba(255, 255, 255, .5);
+}
+
+#shapeTextConfirm {
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, .25);
+    background-color: rgba(255, 255, 255, .15);
+    color: #fff;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color .2s ease;
+}
+
+#shapeTextConfirm:hover {
+    background-color: rgba(255, 255, 255, .3);
+}
