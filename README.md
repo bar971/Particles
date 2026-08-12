@@ -24,3 +24,7 @@ Progetto **vanilla JS (ES5), zero dipendenze**: basta un doppio clic su `index.h
 3. Le forme si alternano automaticamente ogni ~12 secondi se non viene fatta alcuna selezione manuale.
 
 Per i dettagli architetturali e le decisioni di design, vedi [`HANDOFF.md`](./HANDOFF.md).
+
+## Licenza
+
+Rilasciato in pubblico dominio con [The Unlicense](./LICENSE).
