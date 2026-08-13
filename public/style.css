@@ -1,3 +1,12 @@
+html {
+    /* Disattiva il "font boosting" automatico di Chrome Android: senza questa riga,
+       il testo del menu (in un blocco stretto rispetto allo schermo) viene ingrandito
+       oltre le dimensioni impostate in CSS, e il pannello (white-space: nowrap) si
+       allarga di conseguenza fino a coprire quasi tutto lo schermo su mobile. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
 canvas {
     position: absolute;
     left: 0;
