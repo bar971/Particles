@@ -541,6 +541,28 @@ var init = function () {
     var shapeTextConfirm = document.getElementById('shapeTextConfirm');
     var shapeMenu = document.getElementById('shapeMenu');
     var shapeMenuToggle = document.getElementById('shapeMenuToggle');
+    var shapeAutoToggle = document.getElementById('shapeAutoToggle');
+
+    // Ciclo automatico tra le forme: attivo di default (comportamento invariato finché
+    // l'utente non tocca il bottone play/pausa). Una scelta manuale (clic su una voce
+    // della lista o conferma di un testo) lo mette in pausa.
+    var autoPlay = true;
+    var updateAutoToggleState = function () {
+        if (shapeAutoToggle) {
+            shapeAutoToggle.textContent = autoPlay ? '⏸' : '▶';
+            shapeAutoToggle.setAttribute('aria-label', autoPlay ? 'Metti in pausa il ciclo automatico' : 'Riprendi il ciclo automatico');
+        }
+    };
+    updateAutoToggleState();
+    if (shapeAutoToggle) {
+        shapeAutoToggle.addEventListener('click', function () {
+            autoPlay = !autoPlay;
+            if (autoPlay) {
+                lastShapeChange = Date.now(); // riparte pulita la permanenza sulla forma corrente
+            }
+            updateAutoToggleState();
+        });
+    }
 
     // Menu a scomparsa: chiuso di default (nessuna logica diversa per mobile/desktop).
     var menuOpen = false;
@@ -594,6 +616,8 @@ var init = function () {
                 li.addEventListener('click', function () {
                     setShape(idx);
                     updateMenuHighlight();
+                    autoPlay = false;
+                    updateAutoToggleState();
                 });
                 shapeMenuList.appendChild(li);
             })(i);
@@ -608,6 +632,8 @@ var init = function () {
             currentText = val;
             setShape(textShapeIndex);
             updateMenuHighlight();
+            autoPlay = false;
+            updateAutoToggleState();
         };
         shapeTextConfirm.addEventListener('click', applyText);
         shapeTextInput.addEventListener('keydown', function (ev) {
@@ -634,7 +660,7 @@ var init = function () {
 
         // Auto-avanzamento: dopo composizione + permanenza, passa alla forma successiva
         // (saltando "Testo" se non è ancora stato inserito nessun testo).
-        if (elapsed >= COMPOSE_MS + FULL_HOLD_MS) {
+        if (autoPlay && elapsed >= COMPOSE_MS + FULL_HOLD_MS) {
             setShape(nextAutoIndex(currentShapeIndex));
             updateMenuHighlight();
         }
