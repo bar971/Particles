@@ -24,10 +24,21 @@ var init = function () {
     loaded = true;
     var mobile = window.isDevice;
     var koef = mobile ? 0.5 : 1;
+    // Limite a 2 anche su schermi 3x, per non moltiplicare troppo il costo di rendering
+    // già ridotto da koef su mobile.
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
     var canvas = document.getElementById('heart');
     var ctx = canvas.getContext('2d');
-    var width = canvas.width = koef * innerWidth;
-    var height = canvas.height = koef * innerHeight;
+    // width/height restano lo spazio LOGICO usato ovunque nel resto del codice (fisica,
+    // centraggio, normalizzazione delle forme); canvas.width/height sono invece in pixel
+    // fisici (moltiplicati per dpr), e ctx.scale compensa la differenza per i comandi di
+    // disegno. ctx.scale va chiamato DOPO aver impostato canvas.width/height, perché
+    // impostarli resetta qualunque transform precedente.
+    var width = koef * innerWidth;
+    var height = koef * innerHeight;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    ctx.scale(dpr, dpr);
     var rand = Math.random;
     ctx.fillStyle = "rgba(0,0,0,1)";
     ctx.fillRect(0, 0, width, height);
@@ -40,9 +51,50 @@ var init = function () {
         return [dx + pos[0] * sx, dy + pos[1] * sy];
     };
 
+    // Stato "camera": pan (tasto sinistro) e rotazione attorno all'asse Y (tasto destro).
+    // Non vengono mai resettati da setShape o dal cambio forma automatico: persistono
+    // come stato indipendente dalla forma mostrata.
+    var panX = 0, panY = 0;
+    var isPanning = false, lastPanX, lastPanY;
+    var rotationY = 0;
+    var isRotating = false, lastRotX;
+
+    canvas.addEventListener('contextmenu', function (ev) {
+        ev.preventDefault(); // altrimenti il tasto destro apre il menu del browser invece di ruotare
+    });
+    canvas.addEventListener('mousedown', function (ev) {
+        if (ev.button === 0) {
+            isPanning = true;
+            lastPanX = ev.clientX;
+            lastPanY = ev.clientY;
+        } else if (ev.button === 2) {
+            isRotating = true;
+            lastRotX = ev.clientX;
+        }
+    });
+    window.addEventListener('mousemove', function (ev) {
+        if (isPanning) {
+            panX += ev.clientX - lastPanX;
+            panY += ev.clientY - lastPanY;
+            lastPanX = ev.clientX;
+            lastPanY = ev.clientY;
+        }
+        if (isRotating) {
+            rotationY += (ev.clientX - lastRotX) * 0.005;
+            lastRotX = ev.clientX;
+        }
+    });
+    window.addEventListener('mouseup', function () {
+        isPanning = false;
+        isRotating = false;
+    });
+
     window.addEventListener('resize', function () {
-        width = canvas.width = koef * innerWidth;
-        height = canvas.height = koef * innerHeight;
+        width = koef * innerWidth;
+        height = koef * innerHeight;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        ctx.scale(dpr, dpr); // il resize del canvas azzera il transform, va sempre riapplicato
         ctx.fillStyle = "rgba(0,0,0,1)";
         ctx.fillRect(0, 0, width, height);
         // Ricostruisce i bersagli della forma corrente sulle nuove dimensioni del canvas
@@ -454,8 +506,10 @@ var init = function () {
             }
             scale = maxAbs > 0 ? targetExtent / maxAbs : 1;
             pts = [];
+            var p2t;
             for (j = 0; j < raw.length; j++) {
-                pts.push(scaleAndTranslate(raw[j], scale, scale, 0, 0));
+                p2t = scaleAndTranslate(raw[j], scale, scale, 0, 0);
+                pts.push([p2t[0], p2t[1], 0]); // Testo: sempre sullo stesso piano, z=0
             }
             return pts;
         }
@@ -476,9 +530,15 @@ var init = function () {
         scale = maxAbs > 0 ? targetExtent / maxAbs : 1;
         pts = [];
         var f;
+        // Profondità (z) per anello: l'anello esterno (f=0, fattore 1) resta sul piano z=0,
+        // gli anelli interni si allontanano proporzionalmente a quanto sono rimpiccioliti
+        // rispetto all'esterno, così la rotazione produce una parallasse reale tra gli anelli.
+        var ringDepths = [0, (1 - ringFactors[1]) * targetExtent * 0.5, (1 - ringFactors[2]) * targetExtent * 0.5];
+        var p2;
         for (f = 0; f < ringFactors.length; f++) {
             for (j = 0; j < raw.length; j++) {
-                pts.push(scaleAndTranslate(raw[j], scale * ringFactors[f], scale * ringFactors[f], 0, 0));
+                p2 = scaleAndTranslate(raw[j], scale * ringFactors[f], scale * ringFactors[f], 0, 0);
+                pts.push([p2[0], p2[1], ringDepths[f]]);
             }
         }
         return pts;
@@ -505,10 +565,18 @@ var init = function () {
 
     var targetPoints = [];
     var pulse = function (kx, ky) {
+        // Rotazione attorno all'asse Y (solo componente orizzontale del drag col tasto
+        // destro): ruota (x,z) nel piano orizzontale, y resta invariata (nessun vero
+        // arcball, per scelta). Nessun ordinamento per profondità nel rendering: l'ordine
+        // di disegno resta quello attuale, invariato.
+        var cosR = Math.cos(rotationY), sinR = Math.sin(rotationY);
+        var p, rx;
         for (i = 0; i < pointsOrigin.length; i++) {
+            p = pointsOrigin[i];
+            rx = p[0] * cosR - p[2] * sinR;
             targetPoints[i] = [];
-            targetPoints[i][0] = kx * pointsOrigin[i][0] + width / 2;
-            targetPoints[i][1] = ky * pointsOrigin[i][1] + height / 2;
+            targetPoints[i][0] = kx * rx + width / 2 + panX;
+            targetPoints[i][1] = ky * p[1] + height / 2 + panY;
         }
     };
 
