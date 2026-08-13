@@ -51,13 +51,14 @@ var init = function () {
         return [dx + pos[0] * sx, dy + pos[1] * sy];
     };
 
-    // Stato "camera": pan (tasto sinistro) e rotazione attorno all'asse Y (tasto destro).
-    // Non vengono mai resettati da setShape o dal cambio forma automatico: persistono
-    // come stato indipendente dalla forma mostrata.
+    // Stato "camera": pan (tasto sinistro), rotazione attorno all'asse Y (tasto destro) e
+    // zoom (rotellina desktop / pinch touch). Non vengono mai resettati da setShape o dal
+    // cambio forma automatico: persistono come stato indipendente dalla forma mostrata.
     var panX = 0, panY = 0;
     var isPanning = false, lastPanX, lastPanY;
     var rotationY = 0;
     var isRotating = false, lastRotX;
+    var zoom = 1;
 
     canvas.addEventListener('contextmenu', function (ev) {
         ev.preventDefault(); // altrimenti il tasto destro apre il menu del browser invece di ruotare
@@ -88,6 +89,61 @@ var init = function () {
         isPanning = false;
         isRotating = false;
     });
+
+    // Zoom con rotellina (desktop): preventDefault necessario per impedire lo scroll
+    // della pagina mentre si zooma sul canvas, quindi serve { passive: false }.
+    canvas.addEventListener('wheel', function (ev) {
+        ev.preventDefault();
+        zoom *= (ev.deltaY < 0 ? 1.1 : 1 / 1.1);
+        if (zoom < 0.3) zoom = 0.3;
+        if (zoom > 3) zoom = 3;
+    }, { passive: false });
+
+    // Gesti touch (mobile): un dito = pan (stessa logica del pan col tasto sinistro),
+    // due dita = pinch-zoom + rotazione simultanei (nessuna distinzione tra i due gesti,
+    // scelta voluta: applica sempre entrambi gli aggiornamenti).
+    var touchDist = function (t0, t1) {
+        var dx = t1.clientX - t0.clientX, dy = t1.clientY - t0.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    };
+    var startDist, startZoom, lastMidX;
+    canvas.addEventListener('touchstart', function (ev) {
+        ev.preventDefault();
+        if (ev.touches.length === 1) {
+            lastPanX = ev.touches[0].clientX;
+            lastPanY = ev.touches[0].clientY;
+        } else if (ev.touches.length === 2) {
+            startDist = touchDist(ev.touches[0], ev.touches[1]);
+            startZoom = zoom;
+            lastMidX = (ev.touches[0].clientX + ev.touches[1].clientX) / 2;
+        }
+    }, { passive: false });
+    canvas.addEventListener('touchmove', function (ev) {
+        ev.preventDefault();
+        if (ev.touches.length === 1) {
+            panX += ev.touches[0].clientX - lastPanX;
+            panY += ev.touches[0].clientY - lastPanY;
+            lastPanX = ev.touches[0].clientX;
+            lastPanY = ev.touches[0].clientY;
+        } else if (ev.touches.length === 2) {
+            var curDist = touchDist(ev.touches[0], ev.touches[1]);
+            var curMidX = (ev.touches[0].clientX + ev.touches[1].clientX) / 2;
+            zoom = startZoom * (curDist / startDist);
+            if (zoom < 0.3) zoom = 0.3;
+            if (zoom > 3) zoom = 3;
+            rotationY += (curMidX - lastMidX) * 0.005;
+            lastMidX = curMidX;
+        }
+    }, { passive: false });
+    canvas.addEventListener('touchend', function (ev) {
+        if (ev.touches.length === 0) {
+            // nessun tocco residuo: il gesto in corso termina, niente altro da resettare.
+        } else if (ev.touches.length === 1) {
+            // da due tocchi a uno: reinizializza il pan dal tocco rimasto per evitare un salto visivo.
+            lastPanX = ev.touches[0].clientX;
+            lastPanY = ev.touches[0].clientY;
+        }
+    }, { passive: false });
 
     window.addEventListener('resize', function () {
         width = koef * innerWidth;
@@ -165,105 +221,6 @@ var init = function () {
         [-0.5, -1.0], [-0.5, 0.1], [-0.2, 0.1], [-0.2, 1.0], [0.5, -0.2], [0.1, -0.2], [0.5, -1.0]
     ];
     var boltN = boltVertices.length;
-
-    // Forma "Testo": campiona una scritta disegnata su un canvas offscreen.
-    var currentText = ""; // vuoto = nessun testo ancora inserito dall'utente
-    var textCanvas = document.createElement('canvas');
-    textCanvas.width = 800;
-    textCanvas.height = 200;
-    var textCtx = textCanvas.getContext('2d');
-    var getTextPoints = function (totalCount) {
-        var w = textCanvas.width, h = textCanvas.height;
-        textCtx.clearRect(0, 0, w, h);
-        textCtx.fillStyle = "#fff";
-        textCtx.textAlign = "center";
-        textCtx.textBaseline = "middle";
-        var fontSize = 140;
-        textCtx.font = "bold " + fontSize + "px sans-serif";
-        var maxWidth = w * 0.9;
-        while (textCtx.measureText(currentText).width > maxWidth && fontSize > 10) {
-            fontSize -= 4;
-            textCtx.font = "bold " + fontSize + "px sans-serif";
-        }
-        textCtx.fillText(currentText, w / 2, h / 2);
-
-        var data = textCtx.getImageData(0, 0, w, h).data;
-        var stride = 2; // passo di campionamento: limita i pixel candidati senza perdere la forma
-        var candidates = [];
-        var minX = w, maxX = 0, minY = h, maxY = 0;
-        var x, y, idx3;
-        for (y = 0; y < h; y += stride) {
-            for (x = 0; x < w; x += stride) {
-                idx3 = (y * w + x) * 4 + 3; // canale alpha
-                if (data[idx3] > 128) {
-                    candidates.push([x, y]);
-                    if (x < minX) minX = x;
-                    if (x > maxX) maxX = x;
-                    if (y < minY) minY = y;
-                    if (y > maxY) maxY = y;
-                }
-            }
-        }
-
-        var j2;
-        if (candidates.length === 0) {
-            // Nessun pixel (testo vuoto o non renderizzabile): fallback difensivo, tutti al centro.
-            var out0 = [];
-            for (j2 = 0; j2 < totalCount; j2++) out0.push([0, 0]);
-            return out0;
-        }
-
-        // Campionamento a griglia: invece di ordinare i pixel grezzi e prelevarne a intervalli
-        // regolari (il vecchio metodo, che non garantisce una distribuzione spaziale uniforme
-        // e può lasciare quasi vuote lettere strette come "i"), si suddivide il bounding box
-        // del testo in celle e si prende al più un punto per cella (il centroide dei pixel
-        // candidati caduti in quella cella). Il risultato è un insieme di punti-bersaglio
-        // distribuiti uniformemente sulla superficie del testo, indipendentemente dalla
-        // densità locale di pixel.
-        var bboxW = Math.max(1, maxX - minX);
-        var bboxH = Math.max(1, maxY - minY);
-        var cellSize = Math.sqrt((bboxW * bboxH) / (2 * totalCount)) || 1;
-        var gridPoints, cols, rows, cells, k4, cx, cy, cellIdx, cell, p4, attempt;
-        for (attempt = 0; attempt < 2; attempt++) {
-            cols = Math.max(1, Math.ceil(bboxW / cellSize));
-            rows = Math.max(1, Math.ceil(bboxH / cellSize));
-            cells = {};
-            for (k4 = 0; k4 < candidates.length; k4++) {
-                p4 = candidates[k4];
-                cx = Math.min(cols - 1, ~~((p4[0] - minX) / cellSize));
-                cy = Math.min(rows - 1, ~~((p4[1] - minY) / cellSize));
-                cellIdx = cy * cols + cx;
-                cell = cells[cellIdx];
-                if (!cell) {
-                    cells[cellIdx] = { sx: p4[0], sy: p4[1], n: 1 };
-                } else {
-                    cell.sx += p4[0];
-                    cell.sy += p4[1];
-                    cell.n++;
-                }
-            }
-            gridPoints = [];
-            for (cellIdx in cells) {
-                cell = cells[cellIdx];
-                // centroide dei candidati della cella, ricentrato sull'origine
-                gridPoints.push([cell.sx / cell.n - w / 2, cell.sy / cell.n - h / 2]);
-            }
-            if (gridPoints.length >= totalCount) break;
-            cellSize = cellSize / 2; // griglia troppo rada: raffina e riprova (seconda passata)
-        }
-
-        // Ordina per x poi y: coerenza locale, così le particelle che camminano sugli indici
-        // adiacenti (u.q += u.D) restano sulla stessa lettera invece di saltare tra lettere diverse.
-        gridPoints.sort(function (a, b) {
-            return (a[0] - b[0]) || (a[1] - b[1]);
-        });
-        var out = [];
-        var m = gridPoints.length;
-        for (j2 = 0; j2 < totalCount; j2++) {
-            out.push(gridPoints[~~(j2 * m / totalCount)]);
-        }
-        return out;
-    };
 
     // Registro delle forme disponibili: ognuna ha un dominio (tMax) e una funzione
     // parametrica fn(t) -> [x, y] in coordinate "grezze" (prima della normalizzazione).
@@ -438,10 +395,6 @@ var init = function () {
                 var b = tri[(idx + 1) % 3];
                 return [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
             }
-        },
-        {
-            name: "Testo",
-            getPoints: getTextPoints
         }
     ];
 
@@ -492,27 +445,9 @@ var init = function () {
     // massima in proporzione alle dimensioni correnti del canvas (non più un valore
     // assoluto fisso: su mobile, con canvas a mezza risoluzione, una costante assoluta
     // poteva superare la larghezza reale dello schermo) e genera i 3 anelli concentrici.
-    // Le forme con getPoints (es. Testo) forniscono invece direttamente i 3*N punti
-    // finali: niente anelli, altrimenti il contorno verrebbe triplicato sprecando particelle.
     var buildPoints = function (shape) {
         var raw, j, t, maxAbs, scale, pts;
         var targetExtent = Math.min(width, height) * 0.35;
-
-        if (shape.getPoints) {
-            raw = shape.getPoints(shapePointCount * ringFactors.length);
-            maxAbs = 0;
-            for (j = 0; j < raw.length; j++) {
-                maxAbs = Math.max(maxAbs, Math.abs(raw[j][0]), Math.abs(raw[j][1]));
-            }
-            scale = maxAbs > 0 ? targetExtent / maxAbs : 1;
-            pts = [];
-            var p2t;
-            for (j = 0; j < raw.length; j++) {
-                p2t = scaleAndTranslate(raw[j], scale, scale, 0, 0);
-                pts.push([p2t[0], p2t[1], 0]); // Testo: sempre sullo stesso piano, z=0
-            }
-            return pts;
-        }
 
         raw = [];
         if (shape.arcLen) {
@@ -568,15 +503,16 @@ var init = function () {
         // Rotazione attorno all'asse Y (solo componente orizzontale del drag col tasto
         // destro): ruota (x,z) nel piano orizzontale, y resta invariata (nessun vero
         // arcball, per scelta). Nessun ordinamento per profondità nel rendering: l'ordine
-        // di disegno resta quello attuale, invariato.
+        // di disegno resta quello attuale, invariato. Lo zoom scala la forma attorno al
+        // proprio centro: va applicato PRIMA di sommare il centro del canvas e il pan.
         var cosR = Math.cos(rotationY), sinR = Math.sin(rotationY);
         var p, rx;
         for (i = 0; i < pointsOrigin.length; i++) {
             p = pointsOrigin[i];
             rx = p[0] * cosR - p[2] * sinR;
             targetPoints[i] = [];
-            targetPoints[i][0] = kx * rx + width / 2 + panX;
-            targetPoints[i][1] = ky * p[1] + height / 2 + panY;
+            targetPoints[i][0] = kx * rx * zoom + width / 2 + panX;
+            targetPoints[i][1] = ky * p[1] * zoom + height / 2 + panY;
         }
     };
 
@@ -600,20 +536,15 @@ var init = function () {
     }
 
     // Menu flottante a sinistra: le voci sono generate dal registro "shapes" (nessun nome
-    // hardcoded in HTML). L'ultima voce del registro è sempre "Testo" (ha getPoints invece
-    // di tMax/fn): non è una voce di lista normale, ha la riga dedicata con l'input.
-    var textShapeIndex = shapes.length - 1;
+    // hardcoded in HTML).
     var shapeMenuList = document.getElementById('shapeMenuList');
-    var shapeMenuText = document.getElementById('shapeMenuText');
-    var shapeTextInput = document.getElementById('shapeTextInput');
-    var shapeTextConfirm = document.getElementById('shapeTextConfirm');
     var shapeMenu = document.getElementById('shapeMenu');
     var shapeMenuToggle = document.getElementById('shapeMenuToggle');
     var shapeAutoToggle = document.getElementById('shapeAutoToggle');
 
     // Ciclo automatico tra le forme: attivo di default (comportamento invariato finché
     // l'utente non tocca il bottone play/pausa). Una scelta manuale (clic su una voce
-    // della lista o conferma di un testo) lo mette in pausa.
+    // della lista) lo mette in pausa.
     var autoPlay = true;
     var updateAutoToggleState = function () {
         if (shapeAutoToggle) {
@@ -660,24 +591,15 @@ var init = function () {
                 items[idx].className = (idx === currentShapeIndex) ? 'active' : '';
             }
         }
-        if (shapeMenuText) {
-            shapeMenuText.className = (currentShapeIndex === textShapeIndex) ? 'active' : '';
-        }
     };
 
-    // Prossimo indice per l'auto-avanzamento: salta "Testo" se l'utente non ha ancora
-    // confermato una scritta (la voce Testo entra nel ciclo automatico solo dopo la conferma).
+    // Prossimo indice per l'auto-avanzamento.
     var nextAutoIndex = function (fromIndex) {
-        var next = (fromIndex + 1) % shapes.length;
-        if (next === textShapeIndex && currentText.length === 0) {
-            next = (next + 1) % shapes.length;
-        }
-        return next;
+        return (fromIndex + 1) % shapes.length;
     };
 
     if (shapeMenuList) {
         for (i = 0; i < shapes.length; i++) {
-            if (i === textShapeIndex) continue; // "Testo" ha la sua riga dedicata, non una voce di lista
             (function (idx) {
                 var li = document.createElement('li');
                 li.textContent = shapes[idx].name;
@@ -692,24 +614,67 @@ var init = function () {
         }
     }
 
-    if (shapeTextInput && shapeTextConfirm) {
-        shapeTextInput.placeholder = shapes[textShapeIndex].name;
-        var applyText = function () {
-            var val = shapeTextInput.value.replace(/^\s+|\s+$/g, ''); // trim
-            if (val.length === 0) return; // testo vuoto: non applicato
-            currentText = val;
-            setShape(textShapeIndex);
-            updateMenuHighlight();
-            autoPlay = false;
-            updateAutoToggleState();
-        };
-        shapeTextConfirm.addEventListener('click', applyText);
-        shapeTextInput.addEventListener('keydown', function (ev) {
-            if (ev.keyCode === 13) applyText();
-        });
-    }
-
     updateMenuHighlight();
+
+    // Gizmo assi XYZ: mostra l'orientamento corrente della rotazione attorno all'asse Y,
+    // origine fissa in basso a sinistra (ricalcolata a ogni chiamata così segue il resize).
+    // Proiezione ortografica coerente con quella usata in pulse: X e Z ruotano con
+    // rotationY, Y è l'asse di rotazione stesso e resta fisso verticale sullo schermo.
+    var drawAxisGizmo = function () {
+        var gizmoX = 60, gizmoY = height - 60;
+        var L = 40;
+        var cosR = Math.cos(rotationY), sinR = Math.sin(rotationY);
+        var axes = [
+            { dx: L * cosR, dy: 0, color: "#ff5555", label: "X" },
+            { dx: 0, dy: -L, color: "#55ff88", label: "Y" },
+            { dx: -L * sinR, dy: 0, color: "#5599ff", label: "Z" }
+        ];
+        var a, dx, dy, len, ang, ax, ay, arrowLen, leftAng, rightAng, lx, ly, rx2, ry2;
+        ctx.font = "11px sans-serif";
+        ctx.lineWidth = 1;
+        for (var ai = 0; ai < axes.length; ai++) {
+            a = axes[ai];
+            dx = a.dx;
+            dy = a.dy;
+            len = Math.sqrt(dx * dx + dy * dy);
+            ctx.strokeStyle = a.color;
+            ctx.fillStyle = a.color;
+            if (len < 3) {
+                // Asse "di taglio" (proiezione quasi nulla, es. Z quando rotationY ~ 0):
+                // resta visibile come pallino nell'origine invece di sparire.
+                ctx.beginPath();
+                ctx.arc(gizmoX, gizmoY, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillText(a.label, gizmoX + 8, gizmoY + 4);
+                continue;
+            }
+            ax = gizmoX + dx;
+            ay = gizmoY + dy;
+            ctx.beginPath();
+            ctx.moveTo(gizmoX, gizmoY);
+            ctx.lineTo(ax, ay);
+            ctx.stroke();
+
+            // Freccia piena in punta: triangolino orientato lungo l'angolo della linea.
+            ang = Math.atan2(dy, dx);
+            arrowLen = 6;
+            leftAng = ang + Math.PI - Math.PI / 7;
+            rightAng = ang + Math.PI + Math.PI / 7;
+            lx = ax + arrowLen * Math.cos(leftAng);
+            ly = ay + arrowLen * Math.sin(leftAng);
+            rx2 = ax + arrowLen * Math.cos(rightAng);
+            ry2 = ay + arrowLen * Math.sin(rightAng);
+            ctx.beginPath();
+            ctx.moveTo(ax, ay);
+            ctx.lineTo(lx, ly);
+            ctx.lineTo(rx2, ry2);
+            ctx.closePath();
+            ctx.fill();
+
+            // Etichetta subito oltre la punta.
+            ctx.fillText(a.label, ax + (dx / len) * 10, ay + (dy / len) * 10);
+        }
+    };
 
     var config = {
         traceK: 0.4
@@ -726,8 +691,7 @@ var init = function () {
         pulse(sc, sc);
         hue = (hue + 0.4) % 360;
 
-        // Auto-avanzamento: dopo composizione + permanenza, passa alla forma successiva
-        // (saltando "Testo" se non è ancora stato inserito nessun testo).
+        // Auto-avanzamento: dopo composizione + permanenza, passa alla forma successiva.
         if (autoPlay && elapsed >= COMPOSE_MS + FULL_HOLD_MS) {
             setShape(nextAutoIndex(currentShapeIndex));
             updateMenuHighlight();
@@ -775,6 +739,8 @@ var init = function () {
         }
         //ctx.fillStyle = "rgba(255,255,255,1)";
         //for (i = u.trace.length; i--;) ctx.fillRect(targetPoints[i][0], targetPoints[i][1], 2, 2);
+
+        drawAxisGizmo();
 
         window.requestAnimationFrame(loop, canvas);
     };

@@ -13,6 +13,7 @@ canvas {
     width: 100%;
     height: 100%;
     background-color: #00000033;
+    touch-action: none;
 }
 
 /* Bottone hamburger fisso in alto a sinistra: apre/chiude il menu a scomparsa.
@@ -116,46 +117,3 @@ canvas {
     font-weight: bold;
 }
 
-#shapeMenuText {
-    display: flex;
-    gap: 6px;
-    padding-top: 8px;
-    border-top: 1px solid rgba(255, 255, 255, .2);
-    border-radius: 12px;
-}
-
-#shapeMenuText.active {
-    background-color: rgba(255, 255, 255, .1);
-}
-
-#shapeTextInput {
-    flex: 1;
-    min-width: 0;
-    padding: 6px 10px;
-    border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, .25);
-    background-color: rgba(255, 255, 255, .1);
-    color: #fff;
-    font-family: inherit;
-    font-size: 13px;
-}
-
-#shapeTextInput::placeholder {
-    color: rgba(255, 255, 255, .5);
-}
-
-#shapeTextConfirm {
-    padding: 6px 12px;
-    border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, .25);
-    background-color: rgba(255, 255, 255, .15);
-    color: #fff;
-    font-family: inherit;
-    font-size: 13px;
-    cursor: pointer;
-    transition: background-color .2s ease;
-}
-
-#shapeTextConfirm:hover {
-    background-color: rgba(255, 255, 255, .3);
-}
