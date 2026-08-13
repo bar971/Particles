@@ -57,8 +57,10 @@ var init = function () {
     var panX = 0, panY = 0;
     var isPanning = false, lastPanX, lastPanY;
     var rotationY = 0;
-    var isRotating = false, lastRotX;
+    var rotationX = 0;
+    var isRotating = false, lastRotX, lastRotY;
     var zoom = 1;
+    var resetView = function () { panX = 0; panY = 0; rotationY = 0; rotationX = 0; zoom = 1; };
 
     canvas.addEventListener('contextmenu', function (ev) {
         ev.preventDefault(); // altrimenti il tasto destro apre il menu del browser invece di ruotare
@@ -71,6 +73,7 @@ var init = function () {
         } else if (ev.button === 2) {
             isRotating = true;
             lastRotX = ev.clientX;
+            lastRotY = ev.clientY;
         }
     });
     window.addEventListener('mousemove', function (ev) {
@@ -83,12 +86,17 @@ var init = function () {
         if (isRotating) {
             rotationY += (ev.clientX - lastRotX) * 0.005;
             lastRotX = ev.clientX;
+            rotationX += (ev.clientY - lastRotY) * 0.005;
+            if (rotationX > 1.4) rotationX = 1.4;
+            if (rotationX < -1.4) rotationX = -1.4;
+            lastRotY = ev.clientY;
         }
     });
     window.addEventListener('mouseup', function () {
         isPanning = false;
         isRotating = false;
     });
+    canvas.addEventListener('dblclick', resetView);
 
     // Zoom con rotellina (desktop): preventDefault necessario per impedire lo scroll
     // della pagina mentre si zooma sul canvas, quindi serve { passive: false }.
@@ -106,16 +114,20 @@ var init = function () {
         var dx = t1.clientX - t0.clientX, dy = t1.clientY - t0.clientY;
         return Math.sqrt(dx * dx + dy * dy);
     };
-    var startDist, startZoom, lastMidX;
+    var startDist, startZoom, lastMidX, lastMidY;
+    var lastTapTime = 0, tapStartX, tapStartY;
     canvas.addEventListener('touchstart', function (ev) {
         ev.preventDefault();
         if (ev.touches.length === 1) {
             lastPanX = ev.touches[0].clientX;
             lastPanY = ev.touches[0].clientY;
+            tapStartX = ev.touches[0].clientX;
+            tapStartY = ev.touches[0].clientY;
         } else if (ev.touches.length === 2) {
             startDist = touchDist(ev.touches[0], ev.touches[1]);
             startZoom = zoom;
             lastMidX = (ev.touches[0].clientX + ev.touches[1].clientX) / 2;
+            lastMidY = (ev.touches[0].clientY + ev.touches[1].clientY) / 2;
         }
     }, { passive: false });
     canvas.addEventListener('touchmove', function (ev) {
@@ -133,11 +145,25 @@ var init = function () {
             if (zoom > 3) zoom = 3;
             rotationY += (curMidX - lastMidX) * 0.005;
             lastMidX = curMidX;
+            var curMidY = (ev.touches[0].clientY + ev.touches[1].clientY) / 2;
+            rotationX += (curMidY - lastMidY) * 0.005;
+            if (rotationX > 1.4) rotationX = 1.4;
+            if (rotationX < -1.4) rotationX = -1.4;
+            lastMidY = curMidY;
         }
     }, { passive: false });
     canvas.addEventListener('touchend', function (ev) {
         if (ev.touches.length === 0) {
-            // nessun tocco residuo: il gesto in corso termina, niente altro da resettare.
+            var relX = ev.changedTouches[0].clientX, relY = ev.changedTouches[0].clientY;
+            var movedDist = Math.sqrt(Math.pow(relX - tapStartX, 2) + Math.pow(relY - tapStartY, 2));
+            if (movedDist < 10) {
+                if (Date.now() - lastTapTime < 350) {
+                    resetView();
+                    lastTapTime = 0;
+                } else {
+                    lastTapTime = Date.now();
+                }
+            }
         } else if (ev.touches.length === 1) {
             // da due tocchi a uno: reinizializza il pan dal tocco rimasto per evitare un salto visivo.
             lastPanX = ev.touches[0].clientX;
@@ -499,19 +525,22 @@ var init = function () {
 
     var targetPoints = [];
     var pulse = function (kx, ky) {
-        // Rotazione attorno all'asse Y (solo componente orizzontale del drag col tasto
-        // destro): ruota (x,z) nel piano orizzontale, y resta invariata (nessun vero
-        // arcball, per scelta). Nessun ordinamento per profondità nel rendering: l'ordine
-        // di disegno resta quello attuale, invariato. Lo zoom scala la forma attorno al
-        // proprio centro: va applicato PRIMA di sommare il centro del canvas e il pan.
-        var cosR = Math.cos(rotationY), sinR = Math.sin(rotationY);
-        var p, rx;
+        // Rotazione su 2 assi: Y (componente orizzontale del drag col tasto destro, ruota
+        // x/z nel piano orizzontale) e X (componente verticale, inclina y verso z). Non è
+        // un vero arcball, per scelta. Nessun ordinamento per profondità nel rendering:
+        // l'ordine di disegno resta quello attuale, invariato. Lo zoom scala la forma
+        // attorno al proprio centro: va applicato PRIMA di sommare il centro del canvas
+        // e il pan.
+        var cosY = Math.cos(rotationY), sinY = Math.sin(rotationY);
+        var cosX = Math.cos(rotationX), sinX = Math.sin(rotationX);
+        var p, rx, ry;
         for (i = 0; i < pointsOrigin.length; i++) {
             p = pointsOrigin[i];
-            rx = p[0] * cosR - p[2] * sinR;
+            rx = p[0] * cosY - p[2] * sinY;
+            ry = p[1] * cosX - (p[0] * sinY + p[2] * cosY) * sinX;
             targetPoints[i] = [];
             targetPoints[i][0] = kx * rx * zoom + width / 2 + panX;
-            targetPoints[i][1] = ky * p[1] * zoom + height / 2 + panY;
+            targetPoints[i][1] = ky * ry * zoom + height / 2 + panY;
         }
     };
 
@@ -615,21 +644,21 @@ var init = function () {
 
     updateMenuHighlight();
 
-    // Gizmo assi XYZ: mostra l'orientamento corrente della rotazione attorno all'asse Y,
+    // Gizmo assi XYZ: mostra l'orientamento corrente della rotazione sui 2 assi (Y e X),
     // origine fissa in basso a sinistra (ricalcolata a ogni chiamata così segue il resize).
-    // Proiezione ortografica coerente con quella usata in pulse: X e Z ruotano con
-    // rotationY, Y è l'asse di rotazione stesso e resta fisso verticale sullo schermo.
+    // Proiezione ortografica coerente con quella usata in pulse, applicata ai 3 versori locali.
     var drawAxisGizmo = function () {
-        var gizmoX = 60, gizmoY = height - 60;
-        var L = 40;
-        var cosR = Math.cos(rotationY), sinR = Math.sin(rotationY);
+        var gizmoX = 40, gizmoY = height - 40;
+        var L = 22;
+        var cosY = Math.cos(rotationY), sinY = Math.sin(rotationY);
+        var cosX = Math.cos(rotationX), sinX = Math.sin(rotationX);
         var axes = [
-            { dx: L * cosR, dy: 0, color: "#ff5555", label: "X" },
-            { dx: 0, dy: -L, color: "#55ff88", label: "Y" },
-            { dx: -L * sinR, dy: 0, color: "#5599ff", label: "Z" }
+            { dx: L * cosY, dy: L * (-sinY * sinX), color: "rgba(255,255,255,.55)", label: "X" },
+            { dx: 0, dy: -L * cosX, color: "rgba(255,255,255,.55)", label: "Y" },
+            { dx: -L * sinY, dy: -L * cosY * sinX, color: "rgba(255,255,255,.55)", label: "Z" }
         ];
         var a, dx, dy, len, ang, ax, ay, arrowLen, leftAng, rightAng, lx, ly, rx2, ry2;
-        ctx.font = "11px sans-serif";
+        ctx.font = "9px sans-serif";
         ctx.lineWidth = 1;
         for (var ai = 0; ai < axes.length; ai++) {
             a = axes[ai];
