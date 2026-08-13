@@ -1,8 +1,7 @@
 html {
     /* Disattiva il "font boosting" automatico di Chrome Android: senza questa riga,
-       il testo del menu (in un blocco stretto rispetto allo schermo) viene ingrandito
-       oltre le dimensioni impostate in CSS, e il pannello (white-space: nowrap) si
-       allarga di conseguenza fino a coprire quasi tutto lo schermo su mobile. */
+       il testo in blocchi stretti rispetto allo schermo viene ingrandito oltre le
+       dimensioni impostate in CSS. */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
 }
@@ -16,13 +15,36 @@ canvas {
     background-color: #00000033;
 }
 
-/* Menu flottante a sinistra, centrato verticalmente: pannello scuro semitrasparente
-   arrotondato, coerente con lo stile pill già usato nel progetto. */
+/* Bottone hamburger fisso in alto a sinistra: apre/chiude il menu a scomparsa.
+   z-index maggiore del pannello (10) così resta sempre sopra e cliccabile. */
+#shapeMenuToggle {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 11;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, .25);
+    background-color: rgba(0, 0, 0, .55);
+    color: #fff;
+    font-family: inherit;
+    font-size: 20px;
+    cursor: pointer;
+}
+
+/* Menu a scomparsa a sinistra, centrato verticalmente: pannello scuro semitrasparente
+   arrotondato, coerente con lo stile pill già usato nel progetto. Chiuso di default
+   (fuori viewport a sinistra); la classe "open" lo riporta in posizione visibile. */
 #shapeMenu {
     position: fixed;
     left: 16px;
     top: 50%;
-    transform: translateY(-50%);
+    transform: translate(-120%, -50%);
+    transition: transform .25s ease;
     z-index: 10;
     display: flex;
     flex-direction: column;
@@ -35,6 +57,10 @@ canvas {
     color: #fff;
     font-family: inherit;
     font-size: 14px;
+}
+
+#shapeMenu.open {
+    transform: translateY(-50%);
 }
 
 #shapeMenuList {

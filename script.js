@@ -45,6 +45,11 @@ var init = function () {
         height = canvas.height = koef * innerHeight;
         ctx.fillStyle = "rgba(0,0,0,1)";
         ctx.fillRect(0, 0, width, height);
+        // Ricostruisce i bersagli della forma corrente sulle nuove dimensioni del canvas
+        // (buildPoints/shapes/currentShapeIndex/pointsOrigin sono dichiarati più in basso
+        // nel file, ma essendo questa una closure eseguita solo al resize, che avviene
+        // sempre dopo il completamento di init, sono già definiti quando la callback gira).
+        pointsOrigin = buildPoints(shapes[currentShapeIndex]);
     });
 
     var traceCount = mobile ? 20 : 50;
@@ -432,11 +437,14 @@ var init = function () {
 
     // Campiona la forma in shapePointCount punti sul suo dominio (uniformi in t, oppure
     // per lunghezza d'arco se la forma ha il flag arcLen), normalizza l'estensione
-    // massima a ~230px e genera i 3 anelli concentrici. Le forme con getPoints (es. Testo)
-    // forniscono invece direttamente i 3*N punti finali: niente anelli, altrimenti il
-    // contorno verrebbe triplicato sprecando particelle.
+    // massima in proporzione alle dimensioni correnti del canvas (non più un valore
+    // assoluto fisso: su mobile, con canvas a mezza risoluzione, una costante assoluta
+    // poteva superare la larghezza reale dello schermo) e genera i 3 anelli concentrici.
+    // Le forme con getPoints (es. Testo) forniscono invece direttamente i 3*N punti
+    // finali: niente anelli, altrimenti il contorno verrebbe triplicato sprecando particelle.
     var buildPoints = function (shape) {
         var raw, j, t, maxAbs, scale, pts;
+        var targetExtent = Math.min(width, height) * 0.35;
 
         if (shape.getPoints) {
             raw = shape.getPoints(shapePointCount * ringFactors.length);
@@ -444,7 +452,7 @@ var init = function () {
             for (j = 0; j < raw.length; j++) {
                 maxAbs = Math.max(maxAbs, Math.abs(raw[j][0]), Math.abs(raw[j][1]));
             }
-            scale = maxAbs > 0 ? 230 / maxAbs : 1;
+            scale = maxAbs > 0 ? targetExtent / maxAbs : 1;
             pts = [];
             for (j = 0; j < raw.length; j++) {
                 pts.push(scaleAndTranslate(raw[j], scale, scale, 0, 0));
@@ -465,7 +473,7 @@ var init = function () {
         for (j = 0; j < raw.length; j++) {
             maxAbs = Math.max(maxAbs, Math.abs(raw[j][0]), Math.abs(raw[j][1]));
         }
-        scale = maxAbs > 0 ? 230 / maxAbs : 1;
+        scale = maxAbs > 0 ? targetExtent / maxAbs : 1;
         pts = [];
         var f;
         for (f = 0; f < ringFactors.length; f++) {
@@ -531,6 +539,28 @@ var init = function () {
     var shapeMenuText = document.getElementById('shapeMenuText');
     var shapeTextInput = document.getElementById('shapeTextInput');
     var shapeTextConfirm = document.getElementById('shapeTextConfirm');
+    var shapeMenu = document.getElementById('shapeMenu');
+    var shapeMenuToggle = document.getElementById('shapeMenuToggle');
+
+    // Menu a scomparsa: chiuso di default (nessuna logica diversa per mobile/desktop).
+    var menuOpen = false;
+    var updateMenuOpenState = function () {
+        if (shapeMenu) {
+            if (menuOpen) shapeMenu.className = 'open';
+            else shapeMenu.className = '';
+        }
+        if (shapeMenuToggle) {
+            shapeMenuToggle.setAttribute('aria-expanded', menuOpen ? 'true' : 'false');
+            shapeMenuToggle.textContent = menuOpen ? '✕' : '☰';
+        }
+    };
+    if (shapeMenuToggle) {
+        shapeMenuToggle.addEventListener('click', function () {
+            menuOpen = !menuOpen;
+            updateMenuOpenState();
+        });
+    }
+    updateMenuOpenState();
 
     // Aggiorna l'evidenziazione della voce attiva nel menu (usata da clic e auto-avanzamento).
     var updateMenuHighlight = function () {
