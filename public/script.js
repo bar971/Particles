@@ -186,6 +186,7 @@ var init = function () {
         pointsOrigin = buildPoints(shapes[currentShapeIndex]);
     });
 
+    var traceCount = mobile ? 20 : 50;
     var i;
 
     // Vertici della stella a 5 punte (10 vertici alternati: raggio esterno 1, interno 0.4),
@@ -558,9 +559,9 @@ var init = function () {
             force: 0.2 * rand() + 0.7,
             hueOff: 50 * rand() - 25, // offset di tinta rispetto a "hue" globale (±25°)
             light: 55 + 15 * rand(), // luminosità 55-70%, sempre vivace
-            x: x,
-            y: y
+            trace: []
         };
+        for (var k = 0; k < traceCount; k++) e[i].trace[k] = { x: x, y: y };
     }
 
     // Menu flottante a sinistra: le voci sono generate dal registro "shapes" (nessun nome
@@ -704,6 +705,10 @@ var init = function () {
         }
     };
 
+    var config = {
+        traceK: 0.4
+    };
+
     var hue = 0; // tinta globale, ciclo completo sullo spettro in ~15-20s a 60fps
     var loop = function () {
         var elapsed = Date.now() - lastShapeChange;
@@ -721,13 +726,13 @@ var init = function () {
             updateMenuHighlight();
         }
 
-        ctx.fillStyle = "rgba(0,0,0,1)";
+        ctx.fillStyle = "rgba(0,0,0,.1)";
         ctx.fillRect(0, 0, width, height);
         for (i = e.length; i--;) {
             var u = e[i];
             var q = targetPoints[u.q];
-            var dx = u.x - q[0];
-            var dy = u.y - q[1];
+            var dx = u.trace[0].x - q[0];
+            var dy = u.trace[0].y - q[1];
             var length = Math.sqrt(dx * dx + dy * dy);
             if (10 > length) {
                 if (0.95 < rand()) {
@@ -746,13 +751,23 @@ var init = function () {
             }
             u.vx += -dx / length * u.speed;
             u.vy += -dy / length * u.speed;
-            u.x += u.vx;
-            u.y += u.vy;
+            u.trace[0].x += u.vx;
+            u.trace[0].y += u.vy;
             u.vx *= u.force;
             u.vy *= u.force;
-            ctx.fillStyle = "hsla(" + ~~(hue + u.hueOff) + ",100%," + u.light + "%,.9)";
-            ctx.fillRect(u.x, u.y, 2, 2);
+            for (k = 0; k < u.trace.length - 1;) {
+                var T = u.trace[k];
+                var N = u.trace[++k];
+                N.x -= config.traceK * (N.x - T.x);
+                N.y -= config.traceK * (N.y - T.y);
+            }
+            ctx.fillStyle = "hsla(" + ~~(hue + u.hueOff) + ",100%," + u.light + "%,.3)";
+            for (k = 0; k < u.trace.length; k++) {
+                ctx.fillRect(u.trace[k].x, u.trace[k].y, 1, 1);
+            }
         }
+        //ctx.fillStyle = "rgba(255,255,255,1)";
+        //for (i = u.trace.length; i--;) ctx.fillRect(targetPoints[i][0], targetPoints[i][1], 2, 2);
 
         drawAxisGizmo();
 
