@@ -105,8 +105,7 @@ var init = function () {
 
     // Vertici della Saetta (fulmine stilizzato): spezzata chiusa disegnata a mano, punta in basso.
     var boltVertices = [
-        [0.10, -1.00], [0.55, -0.55], [0.15, -0.30], [0.60, -0.05], [0.00, 1.00],
-        [-0.15, 0.30], [-0.55, 0.15], [-0.10, -0.10], [-0.60, -0.50], [-0.15, -0.80]
+        [-0.5, -1.0], [-0.5, 0.1], [-0.2, 0.1], [-0.2, 1.0], [0.5, -0.2], [0.1, -0.2], [0.5, -1.0]
     ];
     var boltN = boltVertices.length;
 
@@ -134,30 +133,77 @@ var init = function () {
         var data = textCtx.getImageData(0, 0, w, h).data;
         var stride = 2; // passo di campionamento: limita i pixel candidati senza perdere la forma
         var candidates = [];
+        var minX = w, maxX = 0, minY = h, maxY = 0;
         var x, y, idx3;
         for (y = 0; y < h; y += stride) {
             for (x = 0; x < w; x += stride) {
                 idx3 = (y * w + x) * 4 + 3; // canale alpha
                 if (data[idx3] > 128) {
-                    candidates.push([x - w / 2, y - h / 2]); // centrato sull'origine
+                    candidates.push([x, y]);
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
                 }
             }
         }
+
+        var j2;
+        if (candidates.length === 0) {
+            // Nessun pixel (testo vuoto o non renderizzabile): fallback difensivo, tutti al centro.
+            var out0 = [];
+            for (j2 = 0; j2 < totalCount; j2++) out0.push([0, 0]);
+            return out0;
+        }
+
+        // Campionamento a griglia: invece di ordinare i pixel grezzi e prelevarne a intervalli
+        // regolari (il vecchio metodo, che non garantisce una distribuzione spaziale uniforme
+        // e può lasciare quasi vuote lettere strette come "i"), si suddivide il bounding box
+        // del testo in celle e si prende al più un punto per cella (il centroide dei pixel
+        // candidati caduti in quella cella). Il risultato è un insieme di punti-bersaglio
+        // distribuiti uniformemente sulla superficie del testo, indipendentemente dalla
+        // densità locale di pixel.
+        var bboxW = Math.max(1, maxX - minX);
+        var bboxH = Math.max(1, maxY - minY);
+        var cellSize = Math.sqrt((bboxW * bboxH) / (2 * totalCount)) || 1;
+        var gridPoints, cols, rows, cells, k4, cx, cy, cellIdx, cell, p4, attempt;
+        for (attempt = 0; attempt < 2; attempt++) {
+            cols = Math.max(1, Math.ceil(bboxW / cellSize));
+            rows = Math.max(1, Math.ceil(bboxH / cellSize));
+            cells = {};
+            for (k4 = 0; k4 < candidates.length; k4++) {
+                p4 = candidates[k4];
+                cx = Math.min(cols - 1, ~~((p4[0] - minX) / cellSize));
+                cy = Math.min(rows - 1, ~~((p4[1] - minY) / cellSize));
+                cellIdx = cy * cols + cx;
+                cell = cells[cellIdx];
+                if (!cell) {
+                    cells[cellIdx] = { sx: p4[0], sy: p4[1], n: 1 };
+                } else {
+                    cell.sx += p4[0];
+                    cell.sy += p4[1];
+                    cell.n++;
+                }
+            }
+            gridPoints = [];
+            for (cellIdx in cells) {
+                cell = cells[cellIdx];
+                // centroide dei candidati della cella, ricentrato sull'origine
+                gridPoints.push([cell.sx / cell.n - w / 2, cell.sy / cell.n - h / 2]);
+            }
+            if (gridPoints.length >= totalCount) break;
+            cellSize = cellSize / 2; // griglia troppo rada: raffina e riprova (seconda passata)
+        }
+
         // Ordina per x poi y: coerenza locale, così le particelle che camminano sugli indici
         // adiacenti (u.q += u.D) restano sulla stessa lettera invece di saltare tra lettere diverse.
-        candidates.sort(function (a, b) {
+        gridPoints.sort(function (a, b) {
             return (a[0] - b[0]) || (a[1] - b[1]);
         });
         var out = [];
-        var n = candidates.length;
-        var j2;
-        if (n === 0) {
-            // Nessun pixel (testo vuoto o non renderizzabile): fallback difensivo, tutti al centro.
-            for (j2 = 0; j2 < totalCount; j2++) out.push([0, 0]);
-            return out;
-        }
+        var m = gridPoints.length;
         for (j2 = 0; j2 < totalCount; j2++) {
-            out.push(candidates[~~(j2 * n / totalCount)]);
+            out.push(gridPoints[~~(j2 * m / totalCount)]);
         }
         return out;
     };
@@ -165,6 +211,22 @@ var init = function () {
     // Registro delle forme disponibili: ognuna ha un dominio (tMax) e una funzione
     // parametrica fn(t) -> [x, y] in coordinate "grezze" (prima della normalizzazione).
     var shapes = [
+        {
+            name: "Astroide",
+            tMax: Math.PI * 2,
+            fn: function (t) {
+                var c = Math.cos(t), s = Math.sin(t);
+                return [c * c * c, s * s * s];
+            }
+        },
+        {
+            name: "Cardioide",
+            tMax: Math.PI * 2,
+            fn: function (t) {
+                var r = 1 - Math.sin(t);
+                return [r * Math.cos(t), r * Math.sin(t)];
+            }
+        },
         {
             name: "Cuore",
             tMax: Math.PI * 2,
@@ -175,6 +237,84 @@ var init = function () {
                 // di scala per x e y), mentre le coordinate grezze di heartPosition hanno
                 // ampiezze molto diverse tra x e y.
                 return [p[0] * 210, p[1] * 13];
+            }
+        },
+        {
+            name: "Deltoide",
+            tMax: Math.PI * 2,
+            fn: function (t) {
+                return [2 * Math.cos(t) + Math.cos(2 * t), 2 * Math.sin(t) - Math.sin(2 * t)];
+            }
+        },
+        {
+            name: "Farfalla",
+            tMax: Math.PI * 2, // curva di Temple Fay: la silhouette è già completa su 2π
+            arcLen: true, // ricampiona per lunghezza d'arco (evita l'aliasing con soli N punti)
+            fn: function (t) {
+                var r = Math.exp(Math.sin(t)) - 2 * Math.cos(4 * t) + Math.pow(Math.sin((2 * t - Math.PI) / 24), 5);
+                // ruotata di -90° (antioraria a schermo, y verso il basso): (x,y) -> (y,-x)
+                return [-r * Math.cos(t), -r * Math.sin(t)]; // ali verso sinistra
+            }
+        },
+        {
+            name: "Fiocco di neve",
+            tMax: 1,
+            fn: function (t) {
+                var seg = t * snowflakeN;
+                var idx = ~~seg % snowflakeN;
+                var frac = seg - ~~seg;
+                var a = snowflakeVertices[idx];
+                var b = snowflakeVertices[(idx + 1) % snowflakeN];
+                return [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
+            }
+        },
+        {
+            name: "Infinito",
+            tMax: Math.PI * 2, // lemniscata di Bernoulli
+            fn: function (t) {
+                var s2 = Math.sin(t) * Math.sin(t);
+                return [Math.cos(t) / (1 + s2), Math.sin(t) * Math.cos(t) / (1 + s2)];
+            }
+        },
+        {
+            name: "Lissajous",
+            tMax: Math.PI * 2,
+            fn: function (t) {
+                return [Math.sin(3 * t + Math.PI / 2), Math.sin(2 * t)];
+            }
+        },
+        {
+            name: "Lissajous 5:4",
+            tMax: Math.PI * 2,
+            fn: function (t) {
+                return [Math.sin(5 * t + Math.PI / 2), Math.sin(4 * t)];
+            }
+        },
+        {
+            name: "Luna",
+            // Vera mezzaluna a due cerchi: C1 (raggio R=1, centro origine) meno C2 (raggio
+            // r=0.9, centro (-0.4,0)). Intersezioni con d=0.4: a=(d²-r²+R²)/(2d)=0.4375,
+            // h=√(R²-a²)≈0.899 → punti (-0.4375, ±0.899), corrispondenti a ±116.0° su C1
+            // e ±92.4° su C2 (rispetto ai rispettivi centri).
+            tMax: 2, // metà dominio per arco
+            fn: function (t) {
+                if (t < 1) {
+                    // arco esterno: cerchio C1, da -116.0° a +116.0° (passando per 0°, la gobba a destra)
+                    var ang = (-116.0 + 232.0 * t) * Math.PI / 180;
+                    return [Math.cos(ang), Math.sin(ang)];
+                } else {
+                    // arco interno (concavo): cerchio C2, da +92.4° a -92.4° (passando per 0°)
+                    var u = t - 1;
+                    var ang2 = (92.4 - 184.8 * u) * Math.PI / 180;
+                    return [-0.4 + 0.9 * Math.cos(ang2), 0.9 * Math.sin(ang2)];
+                }
+            }
+        },
+        {
+            name: "Quadrifoglio",
+            tMax: Math.PI * 2, // rodonea k=2 (pari): serve tutto [0,2π] per ottenere i 4 petali
+            fn: function (t) {
+                return [Math.cos(2 * t) * Math.cos(t), Math.cos(2 * t) * Math.sin(t)];
             }
         },
         {
@@ -195,40 +335,15 @@ var init = function () {
             }
         },
         {
-            name: "Farfalla",
-            tMax: Math.PI * 2, // curva di Temple Fay: la silhouette è già completa su 2π
-            arcLen: true, // ricampiona per lunghezza d'arco (evita l'aliasing con soli N punti)
+            name: "Saetta",
+            tMax: 1,
             fn: function (t) {
-                var r = Math.exp(Math.sin(t)) - 2 * Math.cos(4 * t) + Math.pow(Math.sin((2 * t - Math.PI) / 24), 5);
-                // ruotata di -90° (antioraria a schermo, y verso il basso): (x,y) -> (y,-x)
-                return [-r * Math.cos(t), -r * Math.sin(t)]; // ali verso sinistra
-            }
-        },
-        {
-            name: "Infinito",
-            tMax: Math.PI * 2, // lemniscata di Bernoulli
-            fn: function (t) {
-                var s2 = Math.sin(t) * Math.sin(t);
-                return [Math.cos(t) / (1 + s2), Math.sin(t) * Math.cos(t) / (1 + s2)];
-            }
-        },
-        {
-            name: "Stella",
-            tMax: 1, // interpolazione lineare lungo il perimetro, t in [0,1]
-            fn: function (t) {
-                var seg = t * starN;
-                var idx = ~~seg % starN;
-                var u = seg - ~~seg;
-                var a = starVertices[idx];
-                var b = starVertices[(idx + 1) % starN];
-                return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
-            }
-        },
-        {
-            name: "Lissajous",
-            tMax: Math.PI * 2,
-            fn: function (t) {
-                return [Math.sin(3 * t + Math.PI / 2), Math.sin(2 * t)];
+                var seg = t * boltN;
+                var idx = ~~seg % boltN;
+                var frac = seg - ~~seg;
+                var a = boltVertices[idx];
+                var b = boltVertices[(idx + 1) % boltN];
+                return [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
             }
         },
         {
@@ -242,56 +357,15 @@ var init = function () {
             }
         },
         {
-            name: "Astroide",
-            tMax: Math.PI * 2,
+            name: "Stella",
+            tMax: 1, // interpolazione lineare lungo il perimetro, t in [0,1]
             fn: function (t) {
-                var c = Math.cos(t), s = Math.sin(t);
-                return [c * c * c, s * s * s];
-            }
-        },
-        {
-            name: "Deltoide",
-            tMax: Math.PI * 2,
-            fn: function (t) {
-                return [2 * Math.cos(t) + Math.cos(2 * t), 2 * Math.sin(t) - Math.sin(2 * t)];
-            }
-        },
-        {
-            name: "Cardioide",
-            tMax: Math.PI * 2,
-            fn: function (t) {
-                var r = 1 - Math.sin(t);
-                return [r * Math.cos(t), r * Math.sin(t)];
-            }
-        },
-        {
-            name: "Quadrifoglio",
-            tMax: Math.PI * 2, // rodonea k=2 (pari): serve tutto [0,2π] per ottenere i 4 petali
-            fn: function (t) {
-                return [Math.cos(2 * t) * Math.cos(t), Math.cos(2 * t) * Math.sin(t)];
-            }
-        },
-        {
-            name: "Lissajous 5:4",
-            tMax: Math.PI * 2,
-            fn: function (t) {
-                return [Math.sin(5 * t + Math.PI / 2), Math.sin(4 * t)];
-            }
-        },
-        {
-            name: "Luna",
-            tMax: 2, // metà dominio per arco
-            fn: function (t) {
-                if (t < 1) {
-                    // arco esterno: cerchio unitario, da -110° a +110° (passando per 0°)
-                    var ang = (-110 + 220 * t) * Math.PI / 180;
-                    return [Math.cos(ang), Math.sin(ang)];
-                } else {
-                    // arco interno di ritorno: cerchio centro (0.55,0) raggio 1.296, da 133.5° a 226.5°
-                    var u = t - 1;
-                    var ang2 = (133.5 + 93 * u) * Math.PI / 180;
-                    return [0.55 + 1.296 * Math.cos(ang2), 1.296 * Math.sin(ang2)];
-                }
+                var seg = t * starN;
+                var idx = ~~seg % starN;
+                var u = seg - ~~seg;
+                var a = starVertices[idx];
+                var b = starVertices[(idx + 1) % starN];
+                return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
             }
         },
         {
@@ -309,30 +383,6 @@ var init = function () {
             }
         },
         {
-            name: "Fiocco di neve",
-            tMax: 1,
-            fn: function (t) {
-                var seg = t * snowflakeN;
-                var idx = ~~seg % snowflakeN;
-                var frac = seg - ~~seg;
-                var a = snowflakeVertices[idx];
-                var b = snowflakeVertices[(idx + 1) % snowflakeN];
-                return [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
-            }
-        },
-        {
-            name: "Saetta",
-            tMax: 1,
-            fn: function (t) {
-                var seg = t * boltN;
-                var idx = ~~seg % boltN;
-                var frac = seg - ~~seg;
-                var a = boltVertices[idx];
-                var b = boltVertices[(idx + 1) % boltN];
-                return [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
-            }
-        },
-        {
             name: "Testo",
             getPoints: getTextPoints
         }
@@ -340,7 +390,7 @@ var init = function () {
 
     // Numero di campioni per forma: costante per tutte le forme così il numero totale
     // di punti (e quindi il numero di particelle) non cambia mai al cambio forma.
-    var shapePointCount = mobile ? 21 : 63;
+    var shapePointCount = mobile ? 30 : 90;
     var ringFactors = [1, 0.714, 0.43]; // proporzioni degli anelli attuali (210:150:90)
 
     // Ricampiona una forma per lunghezza d'arco: campiona la curva in denseN punti

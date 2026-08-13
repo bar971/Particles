@@ -1,10 +1,10 @@
 # HANDOFF — Animazione a particelle "Heart Animation"
 
-Ultimo aggiornamento: 2026-08-12. Stato: **iterazione 5 consegnata**; verifiche tecniche superate; verifica visiva dell'iterazione 5 in corso da parte dell'utente.
+Ultimo aggiornamento: 2026-08-13. Stato: **iterazione 6 consegnata**; verifiche tecniche superate; verifica visiva dell'iterazione 6 (Luna, ordine menu, Saetta, leggibilità Testo) ancora da fare da parte dell'utente. In più, l'utente ha segnalato un bug separato su mobile ancora da diagnosticare (vedi "Bug aperti" sotto).
 
 ## Cos'è
 
-Animazione a particelle su canvas 2D: ~189 particelle (63 su mobile) con scie colorate inseguono punti-bersaglio che compongono forme geometriche o una scritta. Progetto **vanilla JS ES5, zero dipendenze**, 3 file, si apre in locale con doppio clic su `index.html` (nessun server, nessuna build).
+Animazione a particelle su canvas 2D: ~270 particelle (90 su mobile) con scie colorate inseguono punti-bersaglio che compongono forme geometriche o una scritta. Progetto **vanilla JS ES5, zero dipendenze**, 3 file, si apre in locale con doppio clic su `index.html` (nessun server, nessuna build).
 
 | File | Ruolo |
 |---|---|
@@ -16,15 +16,15 @@ Animazione a particelle su canvas 2D: ~189 particelle (63 su mobile) con scie co
 
 - **Niente librerie, niente React** (valutato esplicitamente su richiesta dell'utente): l'UI è una lista + un input, stato banale; React imporrebbe runtime ~140 KB o toolchain di build contro il vincolo "tutto locale e a doppio clic". Si riapre il discorso solo se l'app cresce molto.
 - **Cambiare forma = sostituire i punti-bersaglio**: le particelle (posizione/velocità/scie mai toccate) inseguono i nuovi bersagli e il morphing emerge gratis dalla fisica esistente.
-- **Numero di punti costante per OGNI forma** (3·N: 189 desktop / 63 mobile): il numero di particelle e gli indici `q` non cambiano mai. Qualsiasi forma nuova DEVE rispettare questo vincolo.
+- **Numero di punti costante per OGNI forma** (3·N: 270 desktop / 90 mobile, `shapePointCount` = 90/30): il numero di particelle e gli indici `q` non cambiano mai. Qualsiasi forma nuova DEVE rispettare questo vincolo.
 - **Convenzioni**: stile codice ES5/`var` coerente con l'originale; commenti in italiano; coordinate canvas con y verso il basso (rotazione antioraria a schermo = `(x,y)→(y,−x)`).
 
 ## Architettura di `script.js` (in ordine di file)
 
 1. **Polyfill** `requestAnimationFrame` + rilevamento mobile via user agent (`koef` 0.5 → canvas a mezza risoluzione, N ridotto).
-2. **Vertici precalcolati**: `starVertices` (stella 5 punte), `davidTriA/B` (due triangoli), `snowflakeVertices` (Koch iterazione 2 via `kochIterate`, 48 vertici; rotazione gobba −60° verificata numericamente), `boltVertices` (saetta, 10 vertici disegnati a mano, poligono semplice verificato).
-3. **`getTextPoints(totalCount)`**: canvas offscreen 800×200 → `fillText` bold sans-serif 140px (auto-riduzione font se `measureText` > 90% larghezza) → `getImageData`, pixel con alpha>128 a stride 2 → ordinamento per x poi y (coerenza locale: le particelle che camminano su indici adiacenti restano sulla stessa lettera) → selezione di `totalCount` punti equidistanti. Fallback difensivo se zero pixel.
-4. **Registro `shapes`** (17 voci, i nomi appaiono nel menu in quest'ordine): Cuore, Rosa (doppio strato: 5 petali + 5 al 70% ruotati 45°), Farfalla (Temple Fay su [0,2π], ruotata −90° antioraria = ali a sinistra, `arcLen:true`), Infinito (lemniscata), Stella, Lissajous 3:2, Spirografo (ipotrocoide R=5 r=3 d=5 su [0,6π], `arcLen:true`), Astroide, Deltoide, Cardioide (lobo in alto), Quadrifoglio, Lissajous 5:4, Luna (due archi raccordati, gobba a destra), Stella di David, Fiocco di neve, Saetta, **Testo** (ultima, con `getPoints` al posto di `tMax`/`fn`).
+2. **Vertici precalcolati**: `starVertices` (stella 5 punte), `davidTriA/B` (due triangoli), `snowflakeVertices` (Koch iterazione 2 via `kochIterate`, 48 vertici; rotazione gobba −60° verificata numericamente), `boltVertices` (saetta, 7 vertici disegnati a mano, dall'iterazione 6 più spigolosa, poligono semplice verificato).
+3. **`getTextPoints(totalCount)`**: canvas offscreen 800×200 → `fillText` bold sans-serif 140px (auto-riduzione font se `measureText` > 90% larghezza) → `getImageData`, pixel con alpha>128 a stride 2. Selezione dei punti-bersaglio a **griglia** (dall'iterazione 6): il bounding box dei pixel candidati viene suddiviso in celle (dimensione iniziale che dà ~2·`totalCount` celle, raffinata una seconda volta se le celle non vuote sono ancora meno di `totalCount`), un punto per cella (centroide dei pixel candidati caduti in quella cella) → distribuzione spaziale uniforme sul testo (le vecchie lettere strette tipo "i" non restano più quasi vuote). Ordinamento per x poi y (coerenza locale: le particelle che camminano su indici adiacenti restano sulla stessa lettera) → selezione di `totalCount` punti a passo regolare sull'elenco dei punti-griglia. Fallback difensivo se zero pixel.
+4. **Registro `shapes`** (17 voci, i nomi appaiono nel menu in ordine **alfabetico**, tranne Testo sempre ultimo): Astroide, Cardioide, Cuore, Deltoide, Farfalla, Fiocco di neve, Infinito, Lissajous, Lissajous 5:4, Luna, Quadrifoglio, Rosa (doppio strato: 5 petali + 5 al 70% ruotati 45°), Saetta (7 vertici, poligono semplice verificato, dall'iterazione 6 più spigolosa), Spirografo (ipotrocoide R=5 r=3 d=5 su [0,6π], `arcLen:true`), Stella, Stella di David, **Testo** (ultima, con `getPoints` al posto di `tMax`/`fn`). Farfalla: Temple Fay su [0,2π], ruotata −90° antioraria = ali a sinistra, `arcLen:true`. Luna (dall'iterazione 6): vera mezzaluna a due cerchi, C1 (R=1, centro origine) meno C2 (r=0.9, centro (−0.4,0)); intersezioni a ±116.0° su C1 e ±92.4° su C2, verificata numericamente non-ovale (spessore ridotto vicino a y=0) con le corna nei punti più a sinistra del profilo.
    - Forma parametrica: `{ name, tMax, fn(t)→[x,y], arcLen? }`. Il Cuore incorpora i fattori storici 210/13 nella `fn` perché la normalizzazione è isotropa.
 5. **`resampleByArcLength(shape, count)`**: 2000 campioni densi → lunghezze d'arco cumulative → `count` punti equidistanti sul perimetro. Usato dalle forme con `arcLen:true` (Farfalla, Spirografo). Gira solo al cambio forma: costo trascurabile.
 6. **`buildPoints(shape)`**: due rami. Con `getPoints` (Testo): usa direttamente i 3·N punti, senza anelli (gli anelli triplicherebbero il contorno del testo). Altrimenti: N campioni (uniformi in t o per arco), normalizzazione isotropa a estensione max 230 px, poi 3 anelli concentrici con fattori 1 / 0.714 / 0.43.
@@ -39,6 +39,11 @@ Animazione a particelle su canvas 2D: ~189 particelle (63 su mobile) con scie co
 3. Hold 24 s (poi superato); Farfalla ruotata −90° antioraria; Rosa a doppio strato.
 4. **Chiarimento utente**: via la pulsazione battito → nascita una tantum (2 s) + 12 s fermi a dimensione piena, ricomposizione a ogni cambio forma.
 5. 10 nuove forme + forma Testo + menu flottante a sinistra (sostituisce il pulsante).
+6. Luna sostituita con vera mezzaluna a due cerchi (era un ovale pieno); registro `shapes` riordinato alfabeticamente (Testo resta ultimo); Saetta ridisegnata più spigolosa (7 vertici invece di 10); `shapePointCount` aumentato 63/21→90/30 (270/90 particelle totali) e `getTextPoints` riscritta con campionamento a griglia per una distribuzione spaziale più uniforme dei punti-bersaglio del testo. Piano approvato per questa iterazione: `C:\Users\chris\.claude\plans\dreamy-wibbling-acorn.md` (nota: il commento sopra sui piani precedenti citava `enumerated-nibbling-mochi.md`, relativo all'iterazione 5; ogni iterazione ha il suo file di piano, non riusato).
+
+## Bug aperti
+
+- **Layout mobile rotto (segnalato 2026-08-13, non ancora diagnosticato)**: l'utente riporta che su mobile la pagina non è scalata correttamente — il menu a sinistra appare sovrapposto all'immagine delle particelle, che sembra "zoomata al 100%". Il meta viewport in `index.html` (`width=device-width, initial-scale=1.0`) è presente e corretto, e `index.html`/`public/index.html` sono identici, quindi la causa non è ovvia da statica. Non sono riuscito a riprodurre il problema con gli strumenti browser disponibili in questa sessione: `resize_window` (Claude in Chrome) non ridimensiona effettivamente la finestra (resta alla dimensione desktop nonostante la risposta di successo — verificato leggendo `window.innerWidth` dopo la chiamata), e il rilevamento mobile in `script.js` (`window.isDevice`, riga ~20) si basa sullo user-agent, non sulla larghezza finestra, quindi anche un ridimensionamento riuscito su Chrome desktop non attiverebbe il ramo `koef = 0.5`. Serve uno screenshot reale da dispositivo mobile per diagnosticare (richiesto all'utente, in attesa).
 
 ## Processo di lavoro concordato con l'utente
 
@@ -49,7 +54,7 @@ Animazione a particelle su canvas 2D: ~189 particelle (63 su mobile) con scie co
 
 ## Limiti noti / accettati
 
-- Testo con 189 particelle: leggibile fino a ~10 caratteri (limite imposto via `maxlength`); su mobile (63 particelle) la resa è grezza — accettato.
+- Testo con 270 particelle (90 su mobile) e campionamento a griglia (dall'iterazione 6, sostituisce l'ordinamento pixel-grezzi): leggibilità migliorata rispetto alle iterazioni precedenti (189/63 particelle, distribuzione non uniforme), limite `maxlength` a 10 caratteri ancora presente; su mobile (90 particelle) la resa resta più grezza. Conferma definitiva di leggibilità in browser spetta all'utente, non ancora verificata visivamente dopo questa modifica.
 - Niente `devicePixelRatio`: su schermi HiDPI l'immagine è leggermente soft (mai richiesto di sistemarlo).
 - Scheda in background: rAF si ferma, al ritorno può scattare subito un cambio forma (i timer usano `Date.now()`).
 - CSS: `background-color: #00000033` sul canvas è di fatto invisibile (il JS riempie di nero pieno) — lascito dell'originale, mai toccato di proposito.
