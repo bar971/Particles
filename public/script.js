@@ -763,7 +763,7 @@ var init = function () {
             }
             ctx.fillStyle = "hsla(" + ~~(hue + u.hueOff) + ",100%," + u.light + "%,.3)";
             for (k = 0; k < u.trace.length; k++) {
-                ctx.fillRect(u.trace[k].x, u.trace[k].y, 1, 1);
+                ctx.fillRect(u.trace[k].x, u.trace[k].y, 0.6, 0.6);
             }
         }
         //ctx.fillStyle = "rgba(255,255,255,1)";
