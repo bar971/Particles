@@ -726,7 +726,7 @@ var init = function () {
             updateMenuHighlight();
         }
 
-        ctx.fillStyle = "rgba(0,0,0,.1)";
+        ctx.fillStyle = "rgba(0,0,0,1)";
         ctx.fillRect(0, 0, width, height);
         for (i = e.length; i--;) {
             var u = e[i];
@@ -761,7 +761,7 @@ var init = function () {
                 N.x -= config.traceK * (N.x - T.x);
                 N.y -= config.traceK * (N.y - T.y);
             }
-            ctx.fillStyle = "hsla(" + ~~(hue + u.hueOff) + ",100%," + u.light + "%,.3)";
+            ctx.fillStyle = "hsla(" + ~~(hue + u.hueOff) + ",100%," + u.light + "%,1)";
             for (k = 0; k < u.trace.length; k++) {
                 ctx.fillRect(u.trace[k].x, u.trace[k].y, 0.6, 0.6);
             }
